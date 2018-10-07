@@ -1,4 +1,6 @@
 .env
 *.pyc
 .DS_Store
-
+/scrap.py
+/todo.txt
+.python-version
