@@ -26,12 +26,12 @@ def init(workspace_token, admin_token):
     # channels = slack.all_public_channels(reader)
     channels = [slack.get_channel(reader, "#otr-bot-testing")]
 
-    # slack.log("Commencing sweep of old messages.")
+    slack.log("Commencing sweep of old messages.")
 
     for channel in channels:
         clean_channel(channel, reader, cleaner)
 
-    # slack.log("That concludes this sweep of old messages.")
+    slack.log("That concludes this sweep of old messages.")
 
 
 # Given a channel API object, delete old messages.
