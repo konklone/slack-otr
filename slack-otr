@@ -36,11 +36,11 @@ def init(workspace_token, admin_token):
 
 # Given a channel API object, delete old messages.
 def clean_channel(channel, reader, cleaner):
-    # By default, delete messages older than 14 days.
-    # too_old = datetime.timedelta(days=14)
-
     # Testing: delete recent messages.
-    too_old = datetime.timedelta(seconds=1)
+    # too_old = datetime.timedelta(seconds=1)
+
+    # By default, delete messages older than 14 days.
+    too_old = datetime.timedelta(days=14)
 
     # Calculating cut-off. May be imprecise without accounting
     # for time zones, but that level of precision isn't important.
