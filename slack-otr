@@ -7,10 +7,9 @@ import click
 from utils import slack
 
 
-# @click.group()
-# @click.option("--debug", default=False)
-# TODO: option for a test channel
-# TODO: require --for-real for a real sweep
+# Given a workspace token, and an empowered user token,
+# go through all public channels and delete messages
+# older than 14 days.
 def init(workspace_token, admin_token):
     # The workspace client auto-joins all public channels,
     # but cannot delete other users' messages.
@@ -27,20 +26,21 @@ def init(workspace_token, admin_token):
     # channels = slack.all_public_channels(reader)
     channels = [slack.get_channel(reader, "#otr-bot-testing")]
 
+    # slack.log("Commencing sweep of old messages.")
+
     for channel in channels:
         clean_channel(channel, reader, cleaner)
 
-    # slack.post_to(cleaner, "Hello via admin token", channel_name="#otr-bot-testing")
-    # slack.post_to(reader, "Hello via workspace token", channel_name="#otr-bot-testing")
+    # slack.log("That concludes this sweep of old messages.")
 
 
 # Given a channel API object, delete old messages.
 def clean_channel(channel, reader, cleaner):
     # By default, delete messages older than 14 days.
-    too_old = datetime.timedelta(days=14)
+    # too_old = datetime.timedelta(days=14)
 
-    # Testing: delete messages older than ~1 minute.
-    too_old = datetime.timedelta(minutes=1)
+    # Testing: delete recent messages.
+    too_old = datetime.timedelta(seconds=1)
 
     # Calculating cut-off. May be imprecise without accounting
     # for time zones, but that level of precision isn't important.
@@ -52,14 +52,35 @@ def clean_channel(channel, reader, cleaner):
         channel_id=channel['id'],
         older_than=cutoff
     )
-    slack.log("Found %i public messages in #%s older than %s." % (len(messages), channel['name'], too_old))
 
+    # Record the number of parent messages, threaded replies,
+    # and errors we encounter during the old message sweep.
+    stats = {
+        'messages': len(messages),
+        'replies': 0,
+        'errors': {}
+    }
 
     for message in messages:
+        # Delete the parent message.
         print("[debug] Deleting message with text: %s" % message['text'])
         response = slack.delete_message(cleaner, channel['id'], message['ts'])
-        print("[debug] Response: %s" % response)
+        # print("[debug] Response: %s" % response)
+        if 'error' in response:
+            stats['errors'][response['error']] = stats['errors'].get(response['error'], 0) + 1
 
+        # Delete any threaded replies on the message.
+        if ('replies' in message) and (len(message['replies']) > 0):
+            stats['replies'] += len(message['replies'])
+            for reply in message['replies']:
+                response = slack.delete_message(cleaner, channel['id'], reply['ts'])
+                # print("[debug] Response: %s" % response)
+                if 'error' in response:
+                    stats['errors'][response['error']] = stats['errors'].get(response['error'], 0) + 1
+
+
+
+    slack.log("[#%s] Processed %i messages (and %i replies) older than %s. Errors: %s" % (channel['name'], stats['messages'], stats['replies'], too_old, stats['errors']))
 
 
 if __name__ == '__main__':
