@@ -14,7 +14,16 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run it:
+Next, you'll need to create two Slack apps, and generate two tokens:
+
+1. One workspace token (for reading all public channels/messages).
+2. One user token, tied to an admin (for deleting public messages).
+
+(Documentation for this to-be-written.)
+
+### Usage
+
+Once dependences are set up and your tokens are generated, run it with:
 
 ```bash
 ./slack-otr
