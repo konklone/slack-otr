@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+
+import os
+import click
+
+from utils import slack
+
+
+# @click.group()
+# @click.option("--debug", default=False)
+# TODO: option for a test channel
+# TODO: require --for-real for a real sweep
+def init(workspace_token, admin_token):
+    # The workspace client auto-joins all public channels,
+    # but cannot delete other users' messages.
+    reader = slack.client_for(workspace_token)
+
+    # The admin user isn't necessarily in all public channels,
+    # but can delete any message in a public channel.
+    cleaner = slack.client_for(admin_token)
+
+    # Reuse workspace token for logging client.
+    slack.logger = slack.client_for(workspace_token)
+
+    # Get all public channels.
+    # channels = slack.all_public_channels(reader)
+    channels = [slack.get_channel(reader, "#otr-bot-testing")]
+
+    for channel in channels:
+        clean_channel(channel, reader, cleaner)
+
+    # slack.post_to(cleaner, "Hello via admin token", channel_name="#otr-bot-testing")
+    # slack.post_to(reader, "Hello via workspace token", channel_name="#otr-bot-testing")
+
+
+# Given a channel API object, delete old messages.
+def clean_channel(channel, reader, cleaner):
+    messages = slack.all_public_messages(reader, channel_id=channel['id'])
+
+    slack.log("Found %i public messages in #%s." % (len(messages), channel['name']))
+
+
+if __name__ == '__main__':
+    workspace_token = os.environ["SLACK_OTR_WORKSPACE_TOKEN"]
+    admin_token = os.environ["SLACK_OTR_ADMIN_TOKEN"]
+    init(workspace_token, admin_token)
