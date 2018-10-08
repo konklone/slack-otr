@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import datetime
 import click
 
 from utils import slack
@@ -35,9 +36,30 @@ def init(workspace_token, admin_token):
 
 # Given a channel API object, delete old messages.
 def clean_channel(channel, reader, cleaner):
-    messages = slack.all_public_messages(reader, channel_id=channel['id'])
+    # By default, delete messages older than 14 days.
+    too_old = datetime.timedelta(days=14)
 
-    slack.log("Found %i public messages in #%s." % (len(messages), channel['name']))
+    # Testing: delete messages older than ~1 minute.
+    too_old = datetime.timedelta(minutes=1)
+
+    # Calculating cut-off. May be imprecise without accounting
+    # for time zones, but that level of precision isn't important.
+    cutoff = datetime.datetime.now() - too_old
+
+    # Fetch old messages.
+    messages = slack.public_messages(
+        reader,
+        channel_id=channel['id'],
+        older_than=cutoff
+    )
+    slack.log("Found %i public messages in #%s older than %s." % (len(messages), channel['name'], too_old))
+
+
+    for message in messages:
+        print("[debug] Deleting message with text: %s" % message['text'])
+        response = slack.delete_message(cleaner, channel['id'], message['ts'])
+        print("[debug] Response: %s" % response)
+
 
 
 if __name__ == '__main__':
