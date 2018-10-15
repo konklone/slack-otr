@@ -86,7 +86,7 @@ def log(message):
 
     if log_channel_id is None:
         log_channel_id = get_channel(logger, log_channel)['id']
-        print("Debug: Cached log channel ID: %s" % log_channel_id)
+        # print("Debug: Cached log channel ID: %s" % log_channel_id)
 
     print("Logging: %s" % message)
     response = logger.api_call(

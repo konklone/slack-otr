@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
 import os
+import re
 import datetime
+import time
 import click
 
 from utils import slack
 
+DRY_RUN = False
 
 # Given a workspace token, and an empowered user token,
 # go through all public channels and delete messages
@@ -22,13 +25,26 @@ def init(workspace_token, admin_token):
     # Reuse workspace token for logging client.
     slack.logger = slack.client_for(workspace_token)
 
-    # Get all public channels.
-    # channels = slack.all_public_channels(reader)
-    channels = [slack.get_channel(reader, "#otr-bot-testing")]
+    # Get a defined testing channel, or all public channels.
+    if os.environ.get("SLACK_OTR_TESTING_CHANNEL"):
+        channels = [slack.get_channel(reader, os.environ["SLACK_OTR_TESTING_CHANNEL"])]
+    else:
+        channels = slack.all_public_channels(reader)
 
     slack.log("Commencing sweep of old messages.")
 
     for channel in channels:
+        # Skip the logging channel itself.
+        if channel['name'] == os.environ.get("SLACK_OTR_LOGGING_CHANNEL"):
+            print("[#%s] Logging channel, skipping." % channel['name'])
+            continue
+
+        # Skip channels with infinite retention.
+        if retention_for_channel(channel) is None:
+            print("[#%s] Infinite retention, skipping." % channel['name'])
+            continue
+
+        # Process all other channels.
         clean_channel(channel, reader, cleaner)
 
     slack.log("That concludes this sweep of old messages.")
@@ -36,11 +52,12 @@ def init(workspace_token, admin_token):
 
 # Given a channel API object, delete old messages.
 def clean_channel(channel, reader, cleaner):
-    # Testing: delete recent messages.
+    # For use in testing: delete recent messages.
+    # Need to explicitly comment out below line to test.
     # too_old = datetime.timedelta(seconds=1)
 
-    # By default, delete messages older than 30 days.
-    too_old = datetime.timedelta(days=30)
+    # Allow per-channel retention, in purpose.
+    too_old = retention_for_channel(channel)
 
     # Calculating cut-off. May be imprecise without accounting
     # for time zones, but that level of precision isn't important.
@@ -64,7 +81,7 @@ def clean_channel(channel, reader, cleaner):
     for message in messages:
         # Delete the parent message.
         print("[debug] Deleting message with text: %s" % message['text'])
-        response = slack.delete_message(cleaner, channel['id'], message['ts'])
+        response = delete_message(cleaner, channel['id'], message['ts'])
         # print("[debug] Response: %s" % response)
         if 'error' in response:
             stats['errors'][response['error']] = stats['errors'].get(response['error'], 0) + 1
@@ -73,7 +90,7 @@ def clean_channel(channel, reader, cleaner):
         if ('replies' in message) and (len(message['replies']) > 0):
             stats['replies'] += len(message['replies'])
             for reply in message['replies']:
-                response = slack.delete_message(cleaner, channel['id'], reply['ts'])
+                response = delete_message(cleaner, channel['id'], reply['ts'])
                 # print("[debug] Response: %s" % response)
                 if 'error' in response:
                     stats['errors'][response['error']] = stats['errors'].get(response['error'], 0) + 1
@@ -83,7 +100,47 @@ def clean_channel(channel, reader, cleaner):
     slack.log("[#%s] Processed %i messages (and %i replies) older than %s. Errors: %s" % (channel['name'], stats['messages'], stats['replies'], too_old, stats['errors']))
 
 
+# Wraps the delete message call with an option to do this
+# in "dry run" mode, where the message is not actually deleted.
+def delete_message(cleaner, channel_id, ts):
+    if DRY_RUN:
+        return {}
+    else:
+        time.sleep(1)
+        return slack.delete_message(cleaner, channel_id, ts)
+
+
+# Given a channel object, return a datetime delta that can
+# be used as the cutoff for messages in that channel.
+#
+# If set to infinite retention, return None. This will exempt
+# the channel from cleaning.
+def retention_for_channel(channel, default_days=30):
+    # By default, delete messages older than 30 days.
+    too_old = datetime.timedelta(days=default_days)
+
+    # If channel's purpose specifies a custom retention,
+    # override the default.
+    if (channel.get('purpose') is not None) and (channel['purpose'].get('value') is not None):
+        purpose = channel['purpose']['value']
+        match = re.search("!retention:\s+(\d+)\s+days", purpose)
+        if match:
+            retention = match[1]
+
+            # if !retention: infinite, for now
+            # set a custom delta of 30 years.
+            if retention == 'infinite':
+                too_old = None
+            else:
+                too_old = datetime.timedelta(days=int(retention))
+
+    return too_old
+
+
 if __name__ == '__main__':
-    workspace_token = os.environ["SLACK_OTR_WORKSPACE_TOKEN"]
-    admin_token = os.environ["SLACK_OTR_ADMIN_TOKEN"]
+    if os.environ.get("SLACK_OTR_DRY_RUN", False):
+        DRY_RUN = True
+
+    workspace_token = os.environ.get("SLACK_OTR_WORKSPACE_TOKEN")
+    admin_token = os.environ.get("SLACK_OTR_ADMIN_TOKEN")
     init(workspace_token, admin_token)
